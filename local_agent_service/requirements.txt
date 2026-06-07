@@ -1,0 +1,6 @@
+fastapi 
+uvicorn 
+requests
+langgraph 
+langchain-core
+langchain-community

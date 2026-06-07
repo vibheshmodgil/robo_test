@@ -1,0 +1,15 @@
+class VisionStates:
+
+    PASSIVE = "PASSIVE"
+
+    FOLLOW = "FOLLOW"
+
+    GESTURE = "GESTURE"
+
+    RECORD = "RECORD"
+
+    CAPTURE_IMAGE = "CAPTURE_IMAGE"
+
+    INVENTORY = "INVENTORY"
+
+    GIMBAL = "GIMBAL"

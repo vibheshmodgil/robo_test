@@ -1,0 +1,9 @@
+class GlobalModes:
+
+    PASSIVE = "PASSIVE"
+
+    FOLLOW = "FOLLOW"
+
+    SECURITY = "SECURITY"
+
+    CONVERSATION = "CONVERSATION"

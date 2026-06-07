@@ -1,0 +1,12 @@
+vision_service/venv/
+vision_service/venv311/
+audio_service/venv/
+speaker_service/venv/
+vision_service/venv311/
+# macOS
+.DS_Store
+vision_service/yolov8n.pt
+*.pyc
+*.jpg
+databse_service/postgres
+vision_service\app\models\yolov8n-face.pt
