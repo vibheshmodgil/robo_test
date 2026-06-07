@@ -1,0 +1,936 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Gimbal Tune Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#070a0e; --bg2:#0c1219; --panel:#0e1620; --panel2:#121d29; --raised:#16222f;
+  --line:#1b2937; --line2:#27384a; --grid:rgba(63,208,224,.07); --gridb:rgba(63,208,224,.16);
+  --ink:#a8b6c2; --dim:#647585; --bright:#e8f0f7;
+  --amber:#ffb000; --amber2:#ffcb52; --cyan:#36d6e7; --green:#7ee787; --red:#ff5a52; --blue:#5b9dff;
+  --r:7px;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --disp:"Oxanium",var(--mono);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:
+    radial-gradient(1200px 700px at 78% -10%, #10202c 0%, transparent 60%),
+    radial-gradient(900px 600px at 0% 110%, #0d1822 0%, transparent 55%),
+    var(--bg);
+  color:var(--ink); font-family:var(--mono); font-size:13px; line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:999;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.012) 0 1px,transparent 1px 3px);
+  mix-blend-mode:overlay;opacity:.5}
+button{font-family:var(--disp);cursor:pointer}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#1d2c3a;border-radius:6px;border:2px solid var(--bg2)}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ---------- topbar ---------- */
+.topbar{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,#0f1a25,#0b131b);position:sticky;top:0;z-index:50}
+.brand{display:flex;align-items:baseline;gap:10px}
+.brand b{font-family:var(--disp);font-weight:800;letter-spacing:.14em;color:var(--bright);font-size:16px}
+.brand .sub{color:var(--dim);font-size:10.5px;letter-spacing:.28em;text-transform:uppercase}
+.spacer{flex:1}
+.chip{font-family:var(--disp);font-weight:700;letter-spacing:.1em;font-size:11px;padding:4px 10px;border-radius:20px;
+  border:1px solid var(--line2);color:var(--dim);display:flex;gap:7px;align-items:center;white-space:nowrap}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--dim);box-shadow:0 0 0 0 transparent}
+.chip.sim{color:var(--amber2);border-color:#5a440f}
+.chip.sim .dot{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+.chip.live{color:var(--green);border-color:#1d4a2b}
+.chip.live .dot{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 1.4s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.btn{background:var(--raised);border:1px solid var(--line2);color:var(--ink);border-radius:var(--r);
+  padding:7px 13px;font-size:12px;letter-spacing:.06em;font-weight:600;transition:.12s}
+.btn:hover{border-color:#3a5066;color:var(--bright);background:#1b2b3a}
+.btn.go{background:linear-gradient(180deg,#2a6e3a,#1d5630);border-color:#2f7d44;color:#dffbe6}
+.btn.go:hover{background:linear-gradient(180deg,#318045,#236538)}
+.btn.warn{color:var(--amber2)}
+.btn.run[data-on="1"]{background:linear-gradient(180deg,#8a5a12,#6b440d);border-color:#a06c18;color:#ffe9bf}
+
+/* ---------- layout ---------- */
+.bench{display:grid;grid-template-columns:minmax(0,1fr) 388px;gap:14px;padding:14px;align-items:start}
+@media(max-width:1080px){.bench{grid-template-columns:1fr}}
+.stage{display:flex;flex-direction:column;gap:14px;min-width:0}
+.card{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.card>.hd{display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid var(--line);background:#0c151d}
+.card>.hd h3{margin:0;font-family:var(--disp);font-weight:700;letter-spacing:.16em;font-size:11.5px;color:var(--ink);text-transform:uppercase}
+.card>.hd .tag{font-size:10px;color:var(--dim);letter-spacing:.1em}
+.hd .hspace{flex:1}
+
+/* camera + readouts */
+.camwrap{display:grid;grid-template-columns:minmax(280px,1.3fr) minmax(220px,1fr);gap:0}
+@media(max-width:560px){.camwrap{grid-template-columns:1fr}}
+.camside{border-left:1px solid var(--line);padding:12px 13px;display:flex;flex-direction:column;gap:11px;background:#0b1219}
+.camcanvas{display:block;width:100%;height:auto;background:#05080b}
+.rd{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}
+.rdc{background:#0a131b;border:1px solid var(--line);border-radius:6px;padding:7px 9px}
+.rdc .k{font-size:9.5px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase}
+.rdc .v{font-family:var(--mono);font-weight:600;font-size:17px;color:var(--bright);margin-top:1px}
+.rdc.amber .v{color:var(--amber2)} .rdc.cyan .v{color:var(--cyan)}
+.flags{display:flex;gap:6px;flex-wrap:wrap}
+.flag{font-family:var(--disp);font-weight:700;font-size:10px;letter-spacing:.1em;padding:3px 8px;border-radius:5px;border:1px solid var(--line2);color:var(--dim)}
+.flag.on{color:#fff} .flag.sat.on{background:#6b2410;border-color:#a3441e;color:#ffd2bd}
+.flag.lost.on{background:#5a1d1a;border-color:#8a2f2a;color:#ffd0cc}
+.flag.run.on{background:#5e0f0c;border-color:#9a1b16;color:#ffd6d3;animation:pulse 1s infinite}
+
+/* signal controls */
+.sig{padding:11px 13px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:#0b1219}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:7px;overflow:hidden}
+.seg button{background:transparent;border:0;color:var(--dim);padding:6px 11px;font-size:11px;letter-spacing:.08em;font-weight:600}
+.seg button.sel{background:var(--amber);color:#1a1205}
+.minislide{display:flex;align-items:center;gap:8px}
+.minislide label{font-size:10px;letter-spacing:.1em;color:var(--dim);text-transform:uppercase}
+.minislide .mv{font-family:var(--mono);color:var(--bright);min-width:42px;text-align:right;font-size:12px}
+input[type=range]{-webkit-appearance:none;appearance:none;height:4px;background:#22323f;border-radius:3px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+  background:var(--amber);border:2px solid #1a1205;box-shadow:0 0 6px rgba(255,176,0,.5);cursor:pointer}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border:2px solid #1a1205;border-radius:50%;background:var(--amber);cursor:pointer}
+.sig input[type=range]{width:120px}
+
+/* scopes */
+.scopes{display:flex;flex-direction:column;gap:14px}
+.scope .legend{display:flex;gap:14px;align-items:center;font-size:10.5px;color:var(--dim);letter-spacing:.06em}
+.lg{display:inline-flex;align-items:center;gap:6px}
+.lg i{width:13px;height:3px;border-radius:2px;display:inline-block}
+.scopecanvas{display:block;width:100%;height:150px}
+.winsel{display:inline-flex;gap:0;border:1px solid var(--line2);border-radius:6px;overflow:hidden}
+.winsel button{background:transparent;border:0;color:var(--dim);font-size:10.5px;padding:4px 9px;font-weight:600}
+.winsel button.sel{background:#1f2f3d;color:var(--bright)}
+
+/* metrics */
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line)}
+@media(max-width:680px){.metrics{grid-template-columns:repeat(2,1fr)}}
+.met{background:#0c151d;padding:11px 12px}
+.met .k{font-size:9.5px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+.met .v{font-family:var(--mono);font-weight:600;font-size:18px;color:var(--bright);margin-top:2px}
+.met .v small{font-size:11px;color:var(--dim);font-weight:400}
+.met.pan .v{color:var(--amber2)} .met.tilt .v{color:var(--cyan)}
+.met .v.bad{color:var(--red)} .met .v.good{color:var(--green)}
+
+/* ---------- rail ---------- */
+.rail{display:flex;flex-direction:column;gap:10px;position:sticky;top:64px;max-height:calc(100vh - 78px);overflow:auto;padding-right:2px}
+@media(max-width:1080px){.rail{position:static;max-height:none}}
+details.sec{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:9px;overflow:hidden}
+details.sec>summary{list-style:none;cursor:pointer;padding:11px 13px;display:flex;align-items:center;gap:9px;
+  font-family:var(--disp);font-weight:700;letter-spacing:.13em;font-size:11.5px;color:var(--ink);text-transform:uppercase;user-select:none}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec>summary .num{font-family:var(--mono);font-size:11px;color:#1a1205;background:var(--amber);width:19px;height:19px;border-radius:5px;display:grid;place-items:center;font-weight:600;flex:none}
+details.sec>summary .num.x{background:var(--line2);color:var(--dim)}
+details.sec>summary .car{margin-left:auto;color:var(--dim);transition:.15s;font-family:var(--mono)}
+details.sec[open]>summary .car{transform:rotate(90deg)}
+details.sec>summary:hover{color:var(--bright)}
+.secbody{padding:5px 13px 13px;border-top:1px solid var(--line)}
+.note{font-size:10.5px;color:var(--dim);line-height:1.5;margin:7px 0 3px}
+.note b{color:var(--amber2);font-weight:600}
+
+.ctl{padding:8px 0;border-bottom:1px dashed #15212c}
+.ctl:last-child{border-bottom:0}
+.ctl-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;gap:8px}
+.ctl-label{font-size:11.5px;color:var(--ink);letter-spacing:.02em}
+.ctl-label small{color:var(--dim);font-size:10px;letter-spacing:0}
+.ctl-val{font-family:var(--mono);font-weight:600;color:var(--bright);font-size:13px;white-space:nowrap}
+.ctl-val .u{color:var(--dim);font-size:10.5px;font-weight:400}
+.ctl input[type=range]{width:100%}
+.row2{display:flex;gap:9px}
+.row2 .ctl{flex:1}
+
+.toggle{display:inline-flex;border:1px solid var(--line2);border-radius:7px;overflow:hidden}
+.toggle button{background:transparent;border:0;color:var(--dim);padding:6px 12px;font-size:11.5px;font-weight:600;letter-spacing:.05em}
+.toggle button.sel{background:var(--amber);color:#1a1205}
+.toggle.neg button.sel{background:var(--red);color:#fff}
+.field{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+textarea{width:100%;background:#070d12;border:1px solid var(--line2);border-radius:6px;color:var(--green);
+  font-family:var(--mono);font-size:11px;padding:9px;resize:vertical;min-height:70px;line-height:1.5}
+input[type=text]{background:#070d12;border:1px solid var(--line2);border-radius:6px;color:var(--bright);
+  font-family:var(--mono);font-size:12px;padding:7px 9px;flex:1;min-width:140px}
+pre{background:#070d12;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;
+  color:var(--dim);font-size:10.5px;line-height:1.55;margin:6px 0}
+pre b{color:var(--cyan)}
+.kbd{font-family:var(--mono);font-size:10px;background:#0c151d;border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;padding:1px 5px;color:var(--ink)}
+.help{font-size:10.5px;color:var(--dim);line-height:1.55}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><b>GIMBAL · TUNE&nbsp;BENCH</b><span class="sub">IBVS · P(D) · closed-loop</span></div>
+  <div class="spacer"></div>
+  <div id="srcChip" class="chip sim"><span class="dot"></span><span id="srcTxt">SIMULATOR</span></div>
+  <div id="hzChip" class="chip">TX <b id="hzTxt" style="color:var(--bright);margin-left:5px">20 Hz</b></div>
+  <button class="btn run" id="runBtn" data-on="1">❚❚ Pause</button>
+  <button class="btn" id="resetBtn">↺ Reset</button>
+  <button class="btn go" id="stepBtn">Apply Step ▸</button>
+</div>
+
+<div class="bench">
+  <!-- LEFT: visualization -->
+  <div class="stage">
+
+    <div class="card">
+      <div class="hd"><h3>Camera Frame</h3><span class="tag">640 × 480 · what the detector sees</span>
+        <div class="hspace"></div><span class="tag" id="faceTag">face az +0.0° el +0.0°</span></div>
+      <div class="camwrap">
+        <canvas id="cam" class="camcanvas" width="640" height="480"></canvas>
+        <div class="camside">
+          <div class="rd">
+            <div class="rdc amber"><div class="k">Pan</div><div class="v"><span id="rdPan">90.0</span>°</div></div>
+            <div class="rdc cyan"><div class="k">Tilt</div><div class="v"><span id="rdTilt">120.0</span>°</div></div>
+            <div class="rdc"><div class="k">Err X</div><div class="v" id="rdEx">+0.000</div></div>
+            <div class="rdc"><div class="k">Err Y</div><div class="v" id="rdEy">+0.000</div></div>
+            <div class="rdc"><div class="k">Sent (tx)</div><div class="v" id="rdSent" style="font-size:14px">90, 120</div></div>
+            <div class="rdc"><div class="k">Active kp</div><div class="v" id="rdKp" style="font-size:14px">1.80</div></div>
+          </div>
+          <div class="flags">
+            <span class="flag sat" id="fSatP">SAT&nbsp;PAN</span>
+            <span class="flag sat" id="fSatT">SAT&nbsp;TILT</span>
+            <span class="flag lost" id="fLost">LOST&nbsp;<span id="lostN">0</span></span>
+            <span class="flag run" id="fRun">RUN-AWAY</span>
+          </div>
+          <div class="help">Drag inside the frame to place the face (Manual). Crosshair = frame centre; dashed box = dead-zone; hollow ring = step target.</div>
+        </div>
+      </div>
+      <div class="sig">
+        <div class="seg" id="sigSeg">
+          <button data-sig="manual" class="sel">Manual</button>
+          <button data-sig="step">Step</button>
+          <button data-sig="ramp">Ramp</button>
+          <button data-sig="sine">Sine</button>
+        </div>
+        <div class="minislide"><label>Target&nbsp;Az</label><input type="range" id="tAz" min="-38" max="38" step="0.5" value="15"><span class="mv" id="tAzv">+15°</span></div>
+        <div class="minislide"><label>Target&nbsp;El</label><input type="range" id="tEl" min="-26" max="26" step="0.5" value="8"><span class="mv" id="tElv">+8°</span></div>
+        <div class="minislide"><label>Amp</label><input type="range" id="tAmp" min="3" max="35" step="1" value="20"><span class="mv" id="tAmpv">20°</span></div>
+        <div class="minislide"><label>Freq</label><input type="range" id="tFreq" min="0.05" max="1.2" step="0.05" value="0.3"><span class="mv" id="tFreqv">0.30Hz</span></div>
+        <button class="btn" id="centerBtn">⊙ Centre face</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hd"><h3>Scopes</h3><span class="tag">live telemetry</span>
+        <div class="hspace"></div>
+        <div class="winsel" id="winSel">
+          <button data-w="4">4s</button><button data-w="8" class="sel">8s</button><button data-w="16">16s</button>
+        </div>
+      </div>
+      <div class="scopes" style="padding:13px">
+        <div class="scope">
+          <div class="legend"><b style="color:var(--ink);letter-spacing:.1em;font-family:var(--disp)">TRACKING ERROR</b>
+            <span class="lg"><i style="background:var(--amber)"></i>pan e<sub>x</sub></span>
+            <span class="lg"><i style="background:var(--cyan)"></i>tilt e<sub>y</sub></span>
+            <span class="lg"><i style="background:rgba(126,231,135,.5)"></i>dead-zone</span>
+            <span style="margin-left:auto;color:var(--dim)">normalised · 0 = centred</span>
+          </div>
+          <canvas id="scErr" class="scopecanvas"></canvas>
+        </div>
+        <div class="scope">
+          <div class="legend"><b style="color:var(--ink);letter-spacing:.1em;font-family:var(--disp)">SERVO ANGLE</b>
+            <span class="lg"><i style="background:var(--amber)"></i>pan</span>
+            <span class="lg"><i style="background:var(--cyan)"></i>tilt</span>
+            <span class="lg"><i style="background:var(--blue)"></i>tx&nbsp;(decimated)</span>
+            <span class="lg"><i style="background:rgba(126,231,135,.5)"></i>target</span>
+            <span style="margin-left:auto;color:var(--dim)">degrees</span>
+          </div>
+          <canvas id="scAng" class="scopecanvas"></canvas>
+        </div>
+        <div class="scope">
+          <div class="legend"><b style="color:var(--ink);letter-spacing:.1em;font-family:var(--disp)">PID OUTPUT</b>
+            <span class="lg"><i style="background:var(--amber)"></i>pan</span>
+            <span class="lg"><i style="background:var(--cyan)"></i>tilt</span>
+            <span class="lg"><i style="background:rgba(255,90,82,.45)"></i>slew cap</span>
+            <span style="margin-left:auto;color:var(--dim)">deg / frame · outside band = saturated</span>
+          </div>
+          <canvas id="scOut" class="scopecanvas"></canvas>
+        </div>
+      </div>
+      <div class="metrics">
+        <div class="met pan"><div class="k">Pan overshoot</div><div class="v" id="mOsP">—</div></div>
+        <div class="met pan"><div class="k">Pan settle</div><div class="v" id="mStP">—</div></div>
+        <div class="met tilt"><div class="k">Tilt overshoot</div><div class="v" id="mOsT">—</div></div>
+        <div class="met tilt"><div class="k">Tilt settle</div><div class="v" id="mStT">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: parameter rail (built by JS) -->
+  <div class="rail" id="rail"></div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================================
+   GIMBAL TUNE BENCH
+   A faithful JS port of the vision_service gimbal pipeline, run as a
+   closed-loop visual-servo simulator, with live tuning + scopes + step metrics.
+
+   Pipeline order (matches gimble_tracker.py):
+     raw centre -> adaptive EMA -> predictive lead -> normalise -> soft deadband
+       -> PID (gain-scheduled kp, filtered D, dt clamp) -> slew cap
+       -> direction sign -> integrate + clamp -> transport decimation -> servo
+   World model is closed THROUGH the camera (camAz = 90 - servoPan, etc.) so the
+   documented working signs (pan_dir = tilt_dir = -1) are the STABILISING ones;
+   flip a sign and you get the real run-away.
+============================================================================ */
+
+const CX=320, CY=240;
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+
+/* ---- controller parameters (these map 1:1 to the Python code) ---- */
+const params={
+  // direction & limits
+  panDir:-1, tiltDir:-1,
+  panMin:0, panMax:180, tiltMin:30, tiltMax:165, homePan:90, homeTilt:120,
+  // EMA
+  alphaMin:0.18, alphaMax:0.45, jump:50,
+  // predictive lead
+  lead:0.35,
+  // PID + gain schedule
+  kpClose:1.4, kpMid:1.8, kpFar:2.2, ratioHi:0.20, ratioLo:0.10,
+  ki:0.0, kd:0.18, dLpf:0.3, iClampOn:false, iClamp:0.5, dtMin:0.008, dtMax:0.080,
+  // slew + deadband
+  panMaxStep:1.1, tiltMaxStep:0.7, deadband:0.04,
+  // transport
+  minInterval:0.05, degDeadband:2.0,
+  // loss
+  lossHold:15,
+  // target tracker (multi-face; export only)
+  iou:0.30, maxAge:0.8, minHits:3, maxShift:1.4,
+};
+/* ---- simulation / rig-model parameters (NOT sent to the controller) ---- */
+const sim={ fps:30, pxPerDeg:10.7, servoMs:40, noisePx:1.5, faceRatio:0.12, dropout:false };
+/* ---- test signal ---- */
+const test={ signal:"manual", targetAz:15, targetEl:8, amp:20, freq:0.3 };
+
+/* ---- controller runtime state ---- */
+const ctl={
+  pan:90, tilt:120, lostFrames:0, prevFx:null, prevFy:null,
+  xf:{value:null}, yf:{value:null},
+  panPid:{integral:0,prev:0,dFilt:0}, tiltPid:{integral:0,prev:0,dFilt:0},
+};
+function ctlReset(){ // mirrors GimbalTracker.reset(): clears filter+PID, NOT pan/tilt
+  ctl.xf.value=null; ctl.yf.value=null;
+  ctl.panPid={integral:0,prev:0,dFilt:0}; ctl.tiltPid={integral:0,prev:0,dFilt:0};
+  ctl.prevFx=null; ctl.prevFy=null; ctl.lostFrames=0;
+}
+function emaUpdate(f,value){
+  if(f.value===null){f.value=value;return value;}
+  const d=Math.abs(value-f.value);
+  const t=Math.min(1,d/params.jump);
+  const a=params.alphaMin+(params.alphaMax-params.alphaMin)*t;
+  f.value=a*value+(1-a)*f.value; return f.value;
+}
+function pidUpdate(p,error,dt,kp){
+  const cdt=clamp(dt,params.dtMin,params.dtMax);
+  p.integral+=error*cdt;
+  if(params.iClampOn) p.integral=clamp(p.integral,-params.iClamp,params.iClamp);
+  const dRaw=(error-p.prev)/cdt;
+  p.dFilt+=params.dLpf*(dRaw-p.dFilt);
+  p.prev=error;
+  return kp*error + params.ki*p.integral + params.kd*p.dFilt;
+}
+function softDb(e,db){ if(Math.abs(e)<=db) return 0; return e>0?e-db:e+db; }
+
+/* the core track() port. raw in px; returns telemetry or null on full loss. */
+function ctlTrack(rawX,rawY,detected,dt){
+  if(!detected){
+    ctl.lostFrames++;
+    if(ctl.lostFrames<params.lossHold) return {hold:true};
+    ctlReset(); return null;
+  }
+  ctl.lostFrames=0;
+  const fr=sim.faceRatio;
+  const kp = fr>params.ratioHi?params.kpClose : (fr>params.ratioLo?params.kpMid:params.kpFar);
+  let fx=emaUpdate(ctl.xf,rawX), fy=emaUpdate(ctl.yf,rawY);
+  if(ctl.prevFx===null){ctl.prevFx=fx;ctl.prevFy=fy;}
+  const vx=fx-ctl.prevFx, vy=fy-ctl.prevFy;
+  fx+=vx*params.lead; fy+=vy*params.lead;
+  ctl.prevFx=fx; ctl.prevFy=fy;                       // stores extrapolated (the quirk)
+  const ex=softDb((fx-CX)/CX, params.deadband);
+  const ey=softDb((fy-CY)/CY, params.deadband);
+  const po=pidUpdate(ctl.panPid,ex,dt,kp);
+  const to=pidUpdate(ctl.tiltPid,ey,dt,kp);
+  const satP=Math.abs(po)>params.panMaxStep, satT=Math.abs(to)>params.tiltMaxStep;
+  const dP=clamp(po,-params.panMaxStep,params.panMaxStep);
+  const dT=clamp(to,-params.tiltMaxStep,params.tiltMaxStep);
+  ctl.pan=clamp(ctl.pan+params.panDir*dP, params.panMin, params.panMax);
+  ctl.tilt=clamp(ctl.tilt+params.tiltDir*dT, params.tiltMin, params.tiltMax);
+  return {ex,ey,po,to,satP,satT,kp};
+}
+
+/* ---- world (the physical rig being controlled) ---- */
+const world={ faceAz:0, faceEl:0, servoPan:90, servoTilt:120,
+  sentPan:90, sentTilt:120, lastSentPan:null, lastSentTilt:null, transportT:0 };
+function worldReset(){
+  world.faceAz=0; world.faceEl=0;
+  world.servoPan=params.homePan; world.servoTilt=params.homeTilt;
+  world.sentPan=params.homePan; world.sentTilt=params.homeTilt;
+  world.lastSentPan=null; world.lastSentTilt=null; world.transportT=0;
+}
+function transport(dt){
+  world.transportT+=dt;
+  if(world.transportT>=params.minInterval){
+    const cp=Math.round(ctl.pan), ct=Math.round(ctl.tilt);
+    if(world.lastSentPan===null ||
+       Math.abs(cp-world.lastSentPan)>=params.degDeadband ||
+       Math.abs(ct-world.lastSentTilt)>=params.degDeadband){
+      world.sentPan=cp; world.sentTilt=ct; world.lastSentPan=cp; world.lastSentTilt=ct;
+      world.transportT=0;
+    } // else: leave timer high -> retries next frame once change clears deadband
+  }
+}
+function servoStep(dt){
+  const k=1-Math.exp(-dt/Math.max(0.001,sim.servoMs/1000));
+  world.servoPan+=(world.sentPan-world.servoPan)*k;
+  world.servoTilt+=(world.sentTilt-world.servoTilt)*k;
+}
+function driveSignal(T){
+  if(test.signal==="manual"||test.signal==="step"){ /* faceAz/El set elsewhere */ }
+  else if(test.signal==="ramp"){
+    const ph=(T*test.freq)%1; const tri=(2*Math.abs(2*ph-1)-1); // -1..1
+    world.faceAz=test.amp*tri; world.faceEl=test.amp*0.45*(-tri);
+  } else if(test.signal==="sine"){
+    world.faceAz=test.amp*Math.sin(2*Math.PI*test.freq*T);
+    world.faceEl=test.amp*0.45*Math.sin(2*Math.PI*test.freq*T*0.7);
+  }
+}
+
+/* ---- step-response metrics ---- */
+const M={active:false, t0:0, panAt:0, tiltAt:0, panTgt:90, tiltTgt:120,
+  osP:0, osT:0, stP:0, stT:0, ssP:0, ssT:0};
+function beginStep(){
+  M.active=true; M.t0=T;
+  M.panAt=ctl.pan; M.tiltAt=ctl.tilt;
+  M.panTgt=clamp(params.homePan - world.faceAz, params.panMin, params.panMax); // camAz=90-pan -> pan=90-az
+  M.tiltTgt=clamp(params.homeTilt - world.faceEl, params.tiltMin, params.tiltMax);
+  M.osP=M.osT=M.stP=M.stT=0;
+}
+function updateMetrics(){
+  if(!M.active) return;
+  const dbDeg=params.deadband*CX/sim.pxPerDeg;          // dead-zone expressed in degrees
+  const szP=M.panTgt-M.panAt, szT=M.tiltTgt-M.tiltAt;
+  const dirP=Math.sign(szP)||1, dirT=Math.sign(szT)||1;
+  M.osP=Math.max(M.osP,(ctl.pan-M.panTgt)*dirP);
+  M.osT=Math.max(M.osT,(ctl.tilt-M.tiltTgt)*dirT);
+  const bandP=Math.max(0.05*Math.abs(szP),dbDeg), bandT=Math.max(0.05*Math.abs(szT),dbDeg);
+  if(Math.abs(ctl.pan-M.panTgt)>bandP) M.stP=T-M.t0;
+  if(Math.abs(ctl.tilt-M.tiltTgt)>bandT) M.stT=T-M.t0;
+  M.ssP=Math.abs(ctl.pan-M.panTgt); M.ssT=Math.abs(ctl.tilt-M.tiltTgt);
+}
+
+/* ---- telemetry ring buffer ---- */
+const BUF=[]; const BUF_MAX=4000;
+let lastDetected=true, lastRunaway=false;
+function pushSample(s){ BUF.push(s); if(BUF.length>BUF_MAX) BUF.splice(0,BUF.length-BUF_MAX); }
+
+/* ===================== SIM STEP ===================== */
+let T=0;
+function simStep(dt){
+  T+=dt;
+  driveSignal(T);
+  const camAz=params.homePan - world.servoPan;       // = 90 - servoPan
+  const camEl=params.homeTilt - world.servoTilt;      // = 120 - servoTilt
+  const offX=(world.faceAz-camAz)*sim.pxPerDeg;
+  const offY=(world.faceEl-camEl)*sim.pxPerDeg;
+  const nz=()=> (Math.random()*2-1)*sim.noisePx;
+  const rawX=CX+offX+nz(), rawY=CY+offY+nz();
+  const inFrame = Math.abs(offX)<=CX*1.05 && Math.abs(offY)<=CY*1.05;
+  const detected = inFrame && !sim.dropout;
+  lastDetected=detected;
+  lastRunaway = !inFrame && !sim.dropout && M.active===false ? lastRunaway : lastRunaway; // updated below
+  const r=ctlTrack(rawX,rawY,detected,dt);
+  transport(dt); servoStep(dt);
+  updateMetrics();
+  // run-away heuristic: face left frame while we were actively driving toward it
+  lastRunaway = (!inFrame) && (Math.abs(ctl.pan-params.homePan)>3 || Math.abs(ctl.tilt-params.homeTilt)>3) && !sim.dropout;
+  const lost = !detected || (r && r.hold) || (r===null);
+  pushSample({
+    t:T, ex:offX/CX, ey:offY/CY,
+    pan:ctl.pan, tilt:ctl.tilt, sp:world.sentPan, st:world.sentTilt,
+    po:(r&&r.po!=null)?r.po:0, to:(r&&r.to!=null)?r.to:0,
+    satP:!!(r&&r.satP), satT:!!(r&&r.satT), lost, kp:(r&&r.kp!=null)?r.kp:null,
+  });
+}
+
+/* ===================== LIVE (WebSocket) ===================== */
+let ws=null, live=false;
+function setSource(isLive){
+  live=isLive;
+  const c=document.getElementById("srcChip");
+  c.className="chip "+(isLive?"live":"sim");
+  document.getElementById("srcTxt").textContent=isLive?"LIVE · RIG":"SIMULATOR";
+}
+function wsConnect(url){
+  try{ ws=new WebSocket(url); }catch(e){ alert("Bad URL: "+e.message); return; }
+  // NOTE: we do NOT push params on connect -> connecting must never clobber the
+  // rig's running values. The rig sends its current params on connect (UI<-rig
+  // sync); thereafter slider edits push UI->rig. Use "Push all" to force-send.
+  ws.onopen=()=>{ setSource(true); BUF.length=0; document.getElementById("wsStat").textContent="connected"; document.getElementById("wsBtn").textContent="Disconnect"; };
+  ws.onclose=()=>{ setSource(false); ws=null; document.getElementById("wsStat").textContent="disconnected"; document.getElementById("wsBtn").textContent="Connect"; };
+  ws.onerror=()=>{ document.getElementById("wsStat").textContent="error (see note)"; };
+  ws.onmessage=(ev)=>{
+    let m; try{ m=JSON.parse(ev.data); }catch{ return; }
+    if(m.type==="params" && m.data){ adoptParams(m.data); return; }
+    if(m.type!=="telemetry") return;
+    pushSample({ t:(m.t!=null?m.t:performance.now()/1000),
+      ex:m.error_x||0, ey:m.error_y||0, pan:m.pan||0, tilt:m.tilt||0,
+      sp:(m.sent_pan!=null?m.sent_pan:m.pan)||0, st:(m.sent_tilt!=null?m.sent_tilt:m.tilt)||0,
+      po:m.pan_out||0, to:m.tilt_out||0, satP:!!m.sat_pan, satT:!!m.sat_tilt,
+      lost:!!m.lost, kp:(m.kp!=null?m.kp:null) });
+    if(m.pan!=null){ ctl.pan=m.pan; ctl.tilt=m.tilt; }
+    if(m.face_ratio!=null) sim.faceRatio=m.face_ratio;
+  };
+}
+function sendParams(){ if(ws&&ws.readyState===1) ws.send(JSON.stringify({type:"params",data:params})); }
+// adopt params pushed BY the rig (sync sliders to the running rig; never echoes back)
+function setToggleSel(id,val){ const g=document.getElementById(id); if(!g)return;
+  g.querySelectorAll("button").forEach(b=>b.classList.toggle("sel",b.dataset.v===String(val))); }
+function adoptParams(d){
+  Object.keys(params).forEach(k=>{ if(d[k]!=null) params[k]=d[k]; });
+  rebuildSliders();
+  setToggleSel("tgPan",params.panDir); setToggleSel("tgTilt",params.tiltDir);
+  setToggleSel("tgIc",params.iClampOn?1:0); syncSlider("p_iClamp",params.iClamp,2,"");
+  const icv=document.getElementById("v_iClamp"); if(icv) icv.textContent=Number(params.iClamp).toFixed(2);
+  document.getElementById("hzTxt").textContent=(1/params.minInterval).toFixed(0)+" Hz";
+}
+
+/* ==============ws://127.0.0.1:8765======= CONTROL SPEC + RAIL ===================== */
+const fmt=(v,d)=> (v>=0&&d>0?"+":"")+Number(v).toFixed(d);
+const sections=[
+ {n:"0",label:"Direction & Limits",open:true,note:'<b>Verify FIRST.</b> If an axis runs away to a limit, flip its sign — that axis has positive feedback. In this sim the working signs (−1 / −1) are stable; flip one to see the run-away.',
+  custom:"dir",
+  ctrls:[
+   {k:"panMin",t:"Pan min",min:0,max:90,step:1,d:0,u:"°"},{k:"panMax",t:"Pan max",min:90,max:180,step:1,d:0,u:"°"},
+   {k:"tiltMin",t:"Tilt min",min:0,max:120,step:1,d:0,u:"°"},{k:"tiltMax",t:"Tilt max",min:120,max:180,step:1,d:0,u:"°"},
+   {k:"homePan",t:"Home pan",min:0,max:180,step:1,d:0,u:"°"},{k:"homeTilt",t:"Home tilt",min:30,max:165,step:1,d:0,u:"°"},
+  ]},
+ {n:"1",label:"Input · Adaptive EMA",open:true,note:'Smoothing when still ↔ responsiveness on jumps. <b>α-min</b> is your primary jitter knob (lower = smoother, laggier).',
+  ctrls:[
+   {k:"alphaMin",t:"α-min <small>still</small>",min:0.05,max:0.40,step:0.01,d:2},
+   {k:"alphaMax",t:"α-max <small>jump</small>",min:0.30,max:0.80,step:0.01,d:2},
+   {k:"jump",t:"jump threshold",min:20,max:120,step:1,d:0,u:"px"},
+  ]},
+ {n:"7",label:"Predictive Lead",open:false,note:'Hidden knob — anticipates motion. Pulls the same way as kp: drop this <i>before</i> fighting overshoot with kd.',
+  ctrls:[ {k:"lead",t:"lead gain",min:0,max:0.6,step:0.01,d:2} ]},
+ {n:"3",label:"PID + Gain Schedule",open:true,note:'The constructor kp is dead at runtime — kp is set by face size below (1.4 / 1.8 / 2.2). ki = 0 by default (a centring task rarely needs I).',
+  ctrls:[
+   {k:"kpClose",t:"kp · close <small>ratio &gt; hi</small>",min:0.6,max:3.0,step:0.05,d:2},
+   {k:"kpMid",t:"kp · mid",min:0.8,max:3.5,step:0.05,d:2},
+   {k:"kpFar",t:"kp · far <small>ratio &lt; lo</small>",min:1.0,max:12.0,step:0.05,d:2},
+   {k:"ratioHi",t:"ratio split · hi",min:0.12,max:0.30,step:0.01,d:2},
+   {k:"ratioLo",t:"ratio split · lo",min:0.05,max:0.15,step:0.01,d:2},
+   {k:"kd",t:"kd <small>damping</small>",min:0,max:0.6,step:0.01,d:2},
+   {k:"dLpf",t:"d-LPF <small>D smoothing</small>",min:0.10,max:0.60,step:0.01,d:2},
+   {k:"ki",t:"ki <small>steady-state</small>",min:0,max:0.10,step:0.005,d:3},
+  ],
+  customAfter:"iclamp"},
+ {n:"4",label:"Slew & Deadband",open:true,note:'Slew caps the deg/frame; deadband kills micro-jitter near centre. Pan & tilt caps are intentionally asymmetric.',
+  ctrls:[
+   {k:"panMaxStep",t:"pan slew cap",min:0.3,max:8.0,step:0.05,d:2,u:"°/f"},
+   {k:"tiltMaxStep",t:"tilt slew cap",min:0.3,max:8.0,step:0.05,d:2,u:"°/f"},
+   {k:"deadband",t:"deadband <small>normalised</small>",min:0,max:0.10,step:0.005,d:3},
+  ]},
+ {n:"5",label:"Transport",open:true,note:'The three-clock problem: HTTP @ 5 Hz decimates the loop and partly defeats the slew cap. Prefer UDP. On HTTP, min-interval beats the slew cap for smoothness.',
+  custom:"transport",
+  ctrls:[
+   {k:"minInterval",t:"min interval",min:0.03,max:0.30,step:0.005,d:3,u:"s"},
+   {k:"degDeadband",t:"deg deadband",min:0,max:5,step:0.5,d:1,u:"°"},
+  ]},
+ {n:"6",label:"Loss Handling",open:false,
+  ctrls:[ {k:"lossHold",t:"coast frames <small>before reset</small>",min:5,max:40,step:1,d:0,u:"f"} ]},
+ {n:"x",label:"Target Tracker · multi-face",open:false,note:'These govern which face is locked. Not exercised by the single-target sim, but exported to the code. Lower max-shift / raise min-hits if IDs swap.',
+  ctrls:[
+   {k:"iou",t:"IOU threshold",min:0.1,max:0.5,step:0.01,d:2},
+   {k:"maxAge",t:"max age",min:0.3,max:2.0,step:0.1,d:1,u:"s"},
+   {k:"minHits",t:"min hits",min:1,max:8,step:1,d:0},
+   {k:"maxShift",t:"max shift <small>× diag</small>",min:0.6,max:3.0,step:0.1,d:1},
+  ]},
+ {n:"x",label:"Simulation · Rig model",open:false,note:'These model the <i>physical world</i>, not the controller. They are never written to the code.',
+  custom:"sim",
+  ctrls:[
+   {k:"fps",t:"loop rate",min:8,max:60,step:1,d:0,u:"fps",obj:sim},
+   {k:"pxPerDeg",t:"px / degree <small>FOV</small>",min:5,max:20,step:0.1,d:1,obj:sim},
+   {k:"servoMs",t:"servo response",min:5,max:300,step:5,d:0,u:"ms",obj:sim},
+   {k:"noisePx",t:"detection noise",min:0,max:8,step:0.25,d:2,u:"px",obj:sim},
+   {k:"faceRatio",t:"face size <small>→ kp branch</small>",min:0.05,max:0.30,step:0.005,d:3,obj:sim},
+  ]},
+ {n:"x",label:"Export & Connect",open:false,custom:"export"},
+];
+
+const rail=document.getElementById("rail");
+function ctlRow(c){
+  const obj=c.obj||params;
+  const id=(obj===sim?"sim_":"p_")+c.k;
+  const div=document.createElement("div"); div.className="ctl";
+  div.innerHTML=`<div class="ctl-head"><span class="ctl-label">${c.t}</span>
+    <span class="ctl-val" id="v_${id}">${fmt(obj[c.k],c.d)}<span class="u"> ${c.u||""}</span></span></div>
+    <input type="range" id="${id}" min="${c.min}" max="${c.max}" step="${c.step}" value="${obj[c.k]}">`;
+  const inp=div.querySelector("input");
+  inp.addEventListener("input",()=>{
+    obj[c.k]=parseFloat(inp.value);
+    document.getElementById("v_"+id).innerHTML=fmt(obj[c.k],c.d)+`<span class="u"> ${c.u||""}</span>`;
+    onParamChange();
+  });
+  return div;
+}
+function customBlock(kind){
+  const w=document.createElement("div");
+  if(kind==="dir"){
+    w.innerHTML=`<div class="field" style="margin:4px 0 6px">
+      <span class="ctl-label" style="width:62px">pan_dir</span>
+      <div class="toggle neg" id="tgPan"><button data-v="-1">−1</button><button data-v="1">+1</button></div>
+      <span class="ctl-label" style="width:62px;margin-left:8px">tilt_dir</span>
+      <div class="toggle neg" id="tgTilt"><button data-v="-1">−1</button><button data-v="1">+1</button></div></div>`;
+  } else if(kind==="transport"){
+    w.innerHTML=`<div class="field" style="margin:4px 0 8px">
+      <span class="ctl-label">preset</span>
+      <div class="toggle" id="tgTx"><button data-v="udp">UDP · 20Hz</button><button data-v="http">HTTP · 5Hz</button></div></div>`;
+  } else if(kind==="sim"){
+    w.innerHTML=`<div class="field" style="margin:6px 0">
+      <span class="ctl-label">detector dropout</span>
+      <div class="toggle" id="tgDrop"><button data-v="0">on-signal</button><button data-v="1">DROP</button></div>
+      <span class="help">force a detector miss to test the coast / reset</span></div>`;
+  } else if(kind==="iclamp"){
+    w.innerHTML=`<div class="field" style="margin:6px 0 2px">
+      <span class="ctl-label">anti-windup (i_clamp)</span>
+      <div class="toggle" id="tgIc"><button data-v="0">off</button><button data-v="1">on</button></div>
+      <div class="minislide" style="margin-left:6px"><input type="range" id="p_iClamp" min="0.1" max="1.0" step="0.05" value="0.5"><span class="mv" id="v_iClamp">0.50</span></div></div>`;
+  } else if(kind==="export"){
+    w.innerHTML=`
+      <div class="btnrow">
+        <button class="btn" id="copyPy">⧉ Copy Python</button>
+        <button class="btn" id="copyJson">⧉ Copy JSON</button>
+        <button class="btn" id="pasteJson">⇪ Apply JSON</button>
+      </div>
+      <textarea id="ioBox" spellcheck="false" placeholder="tuned values appear here · paste a JSON preset and hit Apply JSON"></textarea>
+      <div class="note" style="margin-top:10px"><b>Live rig connection</b> (works when this file is opened/served locally — the artifact preview can't reach a LAN ws://):</div>
+      <div class="field"><input type="text" id="wsUrl" value="ws://127.0.0.1:8765" spellcheck="false">
+        <button class="btn go" id="wsBtn">Connect</button>
+        <button class="btn" id="pushBtn" title="force-send every current slider value to the rig">Push all ▸</button></div>
+      <div class="help" style="margin-top:4px">status: <span id="wsStat" style="color:var(--amber2)">offline (simulator)</span>&nbsp;· on connect the UI syncs <i>from</i> the rig; edits push live; <b>Push all</b> overwrites the rig with these sliders.</div>
+      <details style="margin-top:8px"><summary class="help" style="cursor:pointer;color:var(--cyan)">▸ wire protocol &amp; python sketch</summary>
+      <pre><b># UI → backend</b>  on every slider change
+{"type":"params","data":{ ... all params ... }}
+
+<b># backend → UI</b>  every frame, from gimbal mode
+{"type":"telemetry","t":12.34,
+ "error_x":0.0,"error_y":0.0,"pan":90.0,"tilt":120.0,
+ "sent_pan":90,"sent_tilt":120,"pan_out":0.0,"tilt_out":0.0,
+ "sat_pan":0,"sat_tilt":0,"face_ratio":0.12,"lost":0,"kp":1.8}
+
+<b># apply params live</b> — every field is read each call, so:
+tracker.deadband      = d["deadband"]
+tracker.pan_max_step  = d["panMaxStep"]
+tracker.pan_pid.kd    = d["kd"]
+tracker.x_filter.alpha_min = d["alphaMin"]   # EMA reads this each update
+esp32.min_interval    = d["minInterval"]
+# gain-schedule kp: replace the 1.4/1.8/2.2 literals in track() with
+# self.kp_close/.kp_mid/.kp_far so they become tunable.</pre></details>`;
+  }
+  return w;
+}
+sections.forEach(sec=>{
+  const d=document.createElement("details"); d.className="sec"; if(sec.open) d.open=true;
+  d.innerHTML=`<summary><span class="num ${sec.n==='x'?'x':''}">${sec.n==='x'?'·':sec.n}</span>${sec.label}<span class="car">▸</span></summary>`;
+  const body=document.createElement("div"); body.className="secbody";
+  if(sec.note){ const p=document.createElement("div"); p.className="note"; p.innerHTML=sec.note; body.appendChild(p); }
+  if(sec.custom) body.appendChild(customBlock(sec.custom));
+  (sec.ctrls||[]).forEach(c=>body.appendChild(ctlRow(c)));
+  if(sec.customAfter) body.appendChild(customBlock(sec.customAfter));
+  d.appendChild(body); rail.appendChild(d);
+});
+
+/* ---- toggles ---- */
+function bindToggle(id,onset,val){ const g=document.getElementById(id); if(!g)return;
+  g.querySelectorAll("button").forEach(b=>{ if(b.dataset.v==String(val))b.classList.add("sel");
+    b.addEventListener("click",()=>{ g.querySelectorAll("button").forEach(x=>x.classList.remove("sel"));
+      b.classList.add("sel"); onset(b.dataset.v); }); }); }
+bindToggle("tgPan",v=>{params.panDir=parseInt(v);onParamChange();},params.panDir);
+bindToggle("tgTilt",v=>{params.tiltDir=parseInt(v);onParamChange();},params.tiltDir);
+bindToggle("tgTx",v=>{ if(v==="udp"){params.minInterval=0.05;params.degDeadband=2.0;} else {params.minInterval=0.20;params.degDeadband=3.0;}
+  syncSlider("p_minInterval",params.minInterval,3,"s"); syncSlider("p_degDeadband",params.degDeadband,1,"°"); onParamChange(); }, "udp");
+bindToggle("tgDrop",v=>{sim.dropout=(v==="1");},"0");
+bindToggle("tgIc",v=>{params.iClampOn=(v==="1");onParamChange();},"0");
+const icR=document.getElementById("p_iClamp");
+if(icR) icR.addEventListener("input",()=>{params.iClamp=parseFloat(icR.value);document.getElementById("v_iClamp").textContent=params.iClamp.toFixed(2);onParamChange();});
+function syncSlider(id,val,d,u){ const r=document.getElementById(id); if(r)r.value=val;
+  const v=document.getElementById("v_"+id); if(v)v.innerHTML=fmt(val,d)+`<span class="u"> ${u||""}</span>`; }
+
+/* ---- signal + test controls ---- */
+const sigSeg=document.getElementById("sigSeg");
+sigSeg.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  sigSeg.querySelectorAll("button").forEach(x=>x.classList.remove("sel")); b.classList.add("sel");
+  test.signal=b.dataset.sig;
+  if(test.signal==="manual"||test.signal==="step"){ world.faceAz=test.targetAz; world.faceEl=test.targetEl; }
+  if(test.signal!=="step"&&test.signal!=="manual") M.active=false;
+}));
+function bindMini(id,key,d,u,onset){ const r=document.getElementById(id), v=document.getElementById(id+"v");
+  r.addEventListener("input",()=>{ test[key]=parseFloat(r.value); v.textContent=fmt(test[key],d)+(u||"");
+    if(onset)onset(); }); }
+bindMini("tAz","targetAz",0,"°",()=>{ if(test.signal==="manual"||test.signal==="step") world.faceAz=test.targetAz; });
+bindMini("tEl","targetEl",0,"°",()=>{ if(test.signal==="manual"||test.signal==="step") world.faceEl=test.targetEl; });
+bindMini("tAmp","amp",0,"°"); bindMini("tFreq","freq",2,"Hz");
+
+/* ---- transport buttons ---- */
+const runBtn=document.getElementById("runBtn");
+let running=true;
+runBtn.addEventListener("click",()=>{ running=!running; runBtn.dataset.on=running?"1":"0";
+  runBtn.textContent=running?"❚❚ Pause":"▶ Run"; });
+document.getElementById("resetBtn").addEventListener("click",doReset);
+function doReset(){ ctl.pan=params.homePan; ctl.tilt=params.homeTilt; ctlReset(); worldReset();
+  if(test.signal==="manual"||test.signal==="step"){ world.faceAz=0; world.faceEl=0; } M.active=false; BUF.length=0; T=0; }
+document.getElementById("stepBtn").addEventListener("click",()=>{
+  test.signal="step"; sigSeg.querySelectorAll("button").forEach(x=>x.classList.toggle("sel",x.dataset.sig==="step"));
+  world.faceAz=test.targetAz; world.faceEl=test.targetEl; beginStep(); });
+document.getElementById("centerBtn").addEventListener("click",()=>{
+  test.signal="step"; sigSeg.querySelectorAll("button").forEach(x=>x.classList.toggle("sel",x.dataset.sig==="step"));
+  world.faceAz=0; world.faceEl=0; beginStep(); });
+
+/* ---- camera drag (place face) ---- */
+const cam=document.getElementById("cam");
+let dragging=false;
+function camPlace(ev){ const rc=cam.getBoundingClientRect();
+  const x=(ev.clientX-rc.left)/rc.width*640, y=(ev.clientY-rc.top)/rc.height*480;
+  const camAz=params.homePan-world.servoPan, camEl=params.homeTilt-world.servoTilt;
+  world.faceAz=clamp(camAz+(x-CX)/sim.pxPerDeg,-45,45);
+  world.faceEl=clamp(camEl+(y-CY)/sim.pxPerDeg,-32,32);
+  test.signal="manual"; sigSeg.querySelectorAll("button").forEach(b=>b.classList.toggle("sel",b.dataset.sig==="manual"));
+  test.targetAz=world.faceAz; test.targetEl=world.faceEl;
+  syncMini(); M.active=false;
+}
+function syncMini(){ document.getElementById("tAz").value=test.targetAz; document.getElementById("tAzv").textContent=fmt(test.targetAz,0)+"°";
+  document.getElementById("tEl").value=test.targetEl; document.getElementById("tElv").textContent=fmt(test.targetEl,0)+"°"; }
+cam.addEventListener("mousedown",e=>{dragging=true;camPlace(e);});
+window.addEventListener("mousemove",e=>{if(dragging)camPlace(e);});
+window.addEventListener("mouseup",()=>dragging=false);
+cam.addEventListener("touchstart",e=>{dragging=true;camPlace(e.touches[0]);e.preventDefault();},{passive:false});
+cam.addEventListener("touchmove",e=>{if(dragging){camPlace(e.touches[0]);e.preventDefault();}},{passive:false});
+window.addEventListener("touchend",()=>dragging=false);
+
+/* ---- window selector ---- */
+let WIN=8;
+document.getElementById("winSel").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+  document.getElementById("winSel").querySelectorAll("button").forEach(x=>x.classList.remove("sel"));
+  b.classList.add("sel"); WIN=parseInt(b.dataset.w); }));
+
+/* ---- export ---- */
+function pyExport(){
+  const ic=params.iClampOn?params.iClamp:"None";
+  const tx = params.minInterval<=0.08
+    ? `ESP32ControllerUDP(min_interval=${params.minInterval}, deg_deadband=${params.degDeadband})`
+    : `ESP32Controller(min_interval=${params.minInterval}, deg_deadband=${params.degDeadband})`;
+  return `# ===== gimble_tracker.py · GimbalTracker.__init__ =====
+self.pan, self.tilt = ${params.homePan.toFixed(1)}, ${params.homeTilt.toFixed(1)}
+self.pan_min, self.pan_max  = ${params.panMin.toFixed(1)}, ${params.panMax.toFixed(1)}
+self.tilt_min, self.tilt_max = ${params.tiltMin.toFixed(1)}, ${params.tiltMax.toFixed(1)}
+self.pan_dir  = ${params.panDir}
+self.tilt_dir = ${params.tiltDir}
+
+self.pan_pid  = PID(kp=${params.kpMid}, ki=${params.ki}, kd=${params.kd}, d_lpf=${params.dLpf}, i_clamp=${ic})
+self.tilt_pid = PID(kp=${params.kpMid}, ki=${params.ki}, kd=${params.kd}, d_lpf=${params.dLpf}, i_clamp=${ic})
+#   ^ kp is OVERWRITTEN every frame by the gain schedule below
+
+self.x_filter = EMAFilter(alpha_min=${params.alphaMin}, alpha_max=${params.alphaMax}, jump=${params.jump.toFixed(1)})
+self.y_filter = EMAFilter(alpha_min=${params.alphaMin}, alpha_max=${params.alphaMax}, jump=${params.jump.toFixed(1)})
+
+self.deadband      = ${params.deadband}
+self.pan_max_step  = ${params.panMaxStep}
+self.tilt_max_step = ${params.tiltMaxStep}
+
+# ===== gain schedule (inside track) =====
+if   face_ratio > ${params.ratioHi}:  kp = ${params.kpClose}
+elif face_ratio > ${params.ratioLo}:  kp = ${params.kpMid}
+else:                    kp = ${params.kpFar}
+
+# predictive lead (inside track):  face_x += vx * ${params.lead}
+# loss hold (inside track):        if self.lost_frames < ${params.lossHold}:
+
+# ===== transport =====
+${tx}
+
+# ===== target_tracker.py =====
+TargetTracker(iou_threshold=${params.iou}, max_age=${params.maxAge}, min_hits=${params.minHits}, max_shift=${params.maxShift})`;
+}
+function copyText(txt){ const box=document.getElementById("ioBox"); box.value=txt;
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).catch(()=>{box.select();document.execCommand&&document.execCommand("copy");}); }
+  else { box.select(); try{document.execCommand("copy");}catch(e){} } }
+document.getElementById("copyPy").addEventListener("click",()=>copyText(pyExport()));
+document.getElementById("copyJson").addEventListener("click",()=>copyText(JSON.stringify(params,null,2)));
+document.getElementById("pasteJson").addEventListener("click",()=>{
+  try{ const o=JSON.parse(document.getElementById("ioBox").value);
+    Object.keys(params).forEach(k=>{ if(o[k]!=null) params[k]=o[k]; }); rebuildSliders(); onParamChange(); }
+  catch(e){ alert("Not valid JSON"); } });
+function rebuildSliders(){ sections.forEach(s=>(s.ctrls||[]).forEach(c=>{ const obj=c.obj||params;
+  const id=(obj===sim?"sim_":"p_")+c.k; syncSlider(id,obj[c.k],c.d,c.u); }));
+  bindToggle && document.querySelectorAll(".toggle button").forEach(()=>{}); }
+document.getElementById("wsBtn").addEventListener("click",()=>{
+  if(ws){ ws.close(); return; } wsConnect(document.getElementById("wsUrl").value.trim()); });
+document.getElementById("pushBtn").addEventListener("click",()=>{
+  if(ws&&ws.readyState===1){ sendParams(); document.getElementById("wsStat").textContent="pushed all params"; }
+  else { document.getElementById("wsStat").textContent="not connected"; } });
+
+function onParamChange(){ document.getElementById("hzTxt").textContent=(1/params.minInterval).toFixed(0)+" Hz"; if(live) sendParams(); }
+
+/* keyboard */
+window.addEventListener("keydown",e=>{ if(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA")return;
+  if(e.code==="Space"){e.preventDefault();runBtn.click();}
+  else if(e.key==="r"||e.key==="R"){doReset();}
+  else if(e.key==="s"||e.key==="S"){document.getElementById("stepBtn").click();} });
+
+/* ===================== RENDERING ===================== */
+function setupCanvas(cv,h){ const dpr=window.devicePixelRatio||1; const w=cv.clientWidth;
+  cv.width=w*dpr; cv.height=h*dpr; const x=cv.getContext("2d"); x.setTransform(dpr,0,0,dpr,0,0); return {x,w,h}; }
+
+function drawCam(){
+  const dpr=window.devicePixelRatio||1, w=cam.clientWidth, h=w*480/640;
+  if(cam.width!==Math.round(w*dpr)){ cam.width=w*dpr; cam.height=h*dpr; }
+  const x=cam.getContext("2d"); x.setTransform(dpr,0,0,dpr,0,0);
+  x.clearRect(0,0,w,h);
+  const sx=w/640, sy=h/480;
+  // background grid
+  x.fillStyle="#05080b"; x.fillRect(0,0,w,h);
+  x.strokeStyle="rgba(63,208,224,.06)"; x.lineWidth=1;
+  for(let gx=0;gx<=640;gx+=80){ x.beginPath();x.moveTo(gx*sx,0);x.lineTo(gx*sx,h);x.stroke(); }
+  for(let gy=0;gy<=480;gy+=80){ x.beginPath();x.moveTo(0,gy*sy);x.lineTo(w,gy*sy);x.stroke(); }
+  // deadband box
+  const dbx=params.deadband*CX, dby=params.deadband*CY;
+  x.strokeStyle="rgba(126,231,135,.45)"; x.setLineDash([5,4]); x.lineWidth=1.2;
+  x.strokeRect((CX-dbx)*sx,(CY-dby)*sy,2*dbx*sx,2*dby*sy); x.setLineDash([]);
+  // centre crosshair
+  x.strokeStyle="rgba(168,182,194,.5)"; x.lineWidth=1;
+  x.beginPath();x.moveTo(CX*sx-12,CY*sy);x.lineTo(CX*sx+12,CY*sy);x.moveTo(CX*sx,CY*sy-12);x.lineTo(CX*sx,CY*sy+12);x.stroke();
+  // step target ghost
+  if(M.active){ const camAz=params.homePan-world.servoPan, camEl=params.homeTilt-world.servoTilt;
+    // target face position is the face itself (we drive camera to centre it); show desired centred ring at frame centre is trivial,
+    // instead show where face will sit once centred = centre. Draw a faint ring at the *current target* face loc:
+  }
+  // face marker — in SIM from the world model; in LIVE reconstructed from error telemetry
+  let fx,fy,inside;
+  if(live){
+    const last=BUF[BUF.length-1];
+    const ex=last?last.ex:0, ey=last?last.ey:0;
+    fx=CX+ex*CX; fy=CY+ey*CY;
+    inside = !(last&&last.lost);
+  } else {
+    const camAz=params.homePan-world.servoPan, camEl=params.homeTilt-world.servoTilt;
+    fx=(CX+(world.faceAz-camAz)*sim.pxPerDeg); fy=(CY+(world.faceEl-camEl)*sim.pxPerDeg);
+    inside=Math.abs(fx-CX)<=CX*1.05&&Math.abs(fy-CY)<=CY*1.05&&!sim.dropout;
+  }
+  const px=clamp(fx,8,632)*sx, py=clamp(fy,8,472)*sy;
+  const r=Math.max(14, sim.faceRatio*640*0.5)*sx;
+  x.beginPath(); x.arc(px,py,r,0,7); 
+  x.fillStyle = inside? "rgba(255,176,0,.16)":"rgba(255,90,82,.16)";
+  x.strokeStyle = inside? "var(--amber)":"var(--red)"; x.lineWidth=2; x.fill(); x.stroke();
+  x.beginPath();x.arc(px,py,3,0,7);x.fillStyle=inside?"#ffd98a":"#ffb4b0";x.fill();
+  if(!inside){ x.fillStyle="var(--red)"; x.font="700 13px Oxanium,monospace";
+    x.fillText(live?"TARGET LOST":(sim.dropout?"DETECTION DROPPED":"FACE OUT OF FRAME"), 12, 22); }
+}
+
+function drawScope(cv,opts){
+  const {x,w,h}=setupCanvas(cv,150);
+  x.clearRect(0,0,w,h); x.fillStyle="#070d12"; x.fillRect(0,0,w,h);
+  const t1=T, t0=T-WIN;
+  const data=BUF.filter(s=>s.t>=t0-0.1);
+  // y-range
+  let lo,hi;
+  if(opts.range==="sym"){ let m=opts.minR; data.forEach(s=>opts.chans.forEach(c=>{const v=Math.abs(s[c.k]);if(isFinite(v))m=Math.max(m,v);}));
+    m*=1.15; lo=-m; hi=m; }
+  else { lo=Infinity;hi=-Infinity; data.forEach(s=>opts.chans.forEach(c=>{const v=s[c.k];if(isFinite(v)){lo=Math.min(lo,v);hi=Math.max(hi,v);}}));
+    if(opts.lines)opts.lines.forEach(L=>{lo=Math.min(lo,L.v);hi=Math.max(hi,L.v);});
+    if(!isFinite(lo)){lo=0;hi=1;} const pad=(hi-lo)*0.12+0.5; lo-=pad;hi+=pad; }
+  const Y=v=>h-((v-lo)/(hi-lo))*h;
+  const X=t=>((t-t0)/WIN)*w;
+  // bands
+  (opts.bands||[]).forEach(b=>{ x.fillStyle=b.color; const ya=Y(b.hi),yb=Y(b.lo); x.fillRect(0,Math.min(ya,yb),w,Math.abs(yb-ya)); });
+  // grid
+  x.strokeStyle="var(--grid)"; x.lineWidth=1;
+  for(let i=0;i<=4;i++){ const yy=h*i/4; x.beginPath();x.moveTo(0,yy);x.lineTo(w,yy);x.stroke(); }
+  for(let s=Math.ceil(t0);s<=t1;s++){ const xx=X(s); x.strokeStyle="var(--grid)";x.beginPath();x.moveTo(xx,0);x.lineTo(xx,h);x.stroke(); }
+  // zero / target lines
+  (opts.lines||[]).forEach(L=>{ x.strokeStyle=L.color;x.lineWidth=L.w||1; x.setLineDash(L.dash||[]);
+    const yy=Y(L.v); x.beginPath();x.moveTo(0,yy);x.lineTo(w,yy);x.stroke(); x.setLineDash([]); });
+  // axis labels
+  x.fillStyle="var(--dim)";x.font="10px IBM Plex Mono,monospace";
+  x.fillText(hi.toFixed(opts.dec||2),4,11); x.fillText(lo.toFixed(opts.dec||2),4,h-4);
+  // channels
+  opts.chans.forEach(c=>{ x.strokeStyle=c.color;x.lineWidth=c.w||1.6; x.setLineDash(c.dash||[]);
+    x.beginPath(); let started=false;
+    data.forEach(s=>{ const v=s[c.k]; if(!isFinite(v))return; const px=X(s.t),py=Y(v);
+      if(!started){x.moveTo(px,py);started=true;} else x.lineTo(px,py); });
+    x.stroke(); x.setLineDash([]); });
+  // step marker
+  if(M.active && M.t0>=t0){ x.strokeStyle="rgba(255,255,255,.25)";x.setLineDash([2,3]); const xx=X(M.t0);
+    x.beginPath();x.moveTo(xx,0);x.lineTo(xx,h);x.stroke();x.setLineDash([]);
+    x.fillStyle="rgba(255,255,255,.4)";x.fillText("step",xx+3,h-6); }
+}
+
+function render(){
+  // in LIVE mode simStep never runs, so drive the scope clock from the newest
+  // telemetry timestamp (works for monotonic OR epoch seconds — windowing is relative)
+  if(live && BUF.length) T=BUF[BUF.length-1].t;
+  // readouts
+  document.getElementById("rdPan").textContent=ctl.pan.toFixed(1);
+  document.getElementById("rdTilt").textContent=ctl.tilt.toFixed(1);
+  const last=BUF[BUF.length-1];
+  if(last){
+    document.getElementById("rdEx").textContent=fmt(last.ex,3);
+    document.getElementById("rdEy").textContent=fmt(last.ey,3);
+    document.getElementById("rdSent").textContent=`${Math.round(last.sp)}, ${Math.round(last.st)}`;
+    document.getElementById("rdKp").textContent=last.kp!=null?last.kp.toFixed(2):"—";
+    document.getElementById("fSatP").classList.toggle("on",last.satP);
+    document.getElementById("fSatT").classList.toggle("on",last.satT);
+    document.getElementById("fLost").classList.toggle("on",last.lost);
+    document.getElementById("lostN").textContent=ctl.lostFrames;
+  }
+  document.getElementById("fRun").classList.toggle("on",lastRunaway&&!live);
+  document.getElementById("faceTag").textContent=`face az ${fmt(world.faceAz,1)}° el ${fmt(world.faceEl,1)}°`;
+  // metrics
+  const szP=Math.abs(M.panTgt-M.panAt), szT=Math.abs(M.tiltTgt-M.tiltAt);
+  if(M.active&&szP>0.5){ const os=Math.max(0,M.osP)/szP*100;
+    const e=document.getElementById("mOsP"); e.textContent=os.toFixed(0)+"%"; e.className="v "+(os>20?"bad":os<8?"good":""); }
+  else document.getElementById("mOsP").textContent="—";
+  if(M.active&&szT>0.5){ const os=Math.max(0,M.osT)/szT*100;
+    const e=document.getElementById("mOsT"); e.textContent=os.toFixed(0)+"%"; e.className="v "+(os>20?"bad":os<8?"good":""); }
+  else document.getElementById("mOsT").textContent="—";
+  document.getElementById("mStP").innerHTML=M.active&&szP>0.5?(M.stP.toFixed(2)+'<small> s · ss '+M.ssP.toFixed(1)+'°</small>'):"—";
+  document.getElementById("mStT").innerHTML=M.active&&szT>0.5?(M.stT.toFixed(2)+'<small> s · ss '+M.ssT.toFixed(1)+'°</small>'):"—";
+
+  drawCam();
+  drawScope(document.getElementById("scErr"),{ range:"sym", minR:0.12, dec:2,
+    lines:[{v:0,color:"rgba(168,182,194,.35)",w:1}],
+    bands:[{lo:-params.deadband,hi:params.deadband,color:"rgba(126,231,135,.10)"}],
+    chans:[{k:"ex",color:"var(--amber)"},{k:"ey",color:"var(--cyan)"}] });
+  drawScope(document.getElementById("scAng"),{ range:"auto", dec:0,
+    lines: M.active?[{v:M.panTgt,color:"rgba(126,231,135,.5)",dash:[5,4]},{v:M.tiltTgt,color:"rgba(126,231,135,.3)",dash:[5,4]}]:[],
+    chans:[{k:"sp",color:"var(--blue)",w:1,dash:[1,2]},{k:"st",color:"rgba(91,157,255,.5)",w:1,dash:[1,2]},
+           {k:"pan",color:"var(--amber)"},{k:"tilt",color:"var(--cyan)"}] });
+  drawScope(document.getElementById("scOut"),{ range:"sym", minR:Math.max(params.panMaxStep,params.tiltMaxStep)*1.3, dec:2,
+    lines:[{v:0,color:"rgba(168,182,194,.3)",w:1}],
+    bands:[{lo:-params.panMaxStep,hi:params.panMaxStep,color:"rgba(255,90,82,.07)"}],
+    chans:[{k:"po",color:"var(--amber)"},{k:"to",color:"var(--cyan)"}] });
+}
+
+/* ===================== MAIN LOOP ===================== */
+let lastNow=performance.now(), acc=0;
+function loop(now){
+  const real=(now-lastNow)/1000; lastNow=now; 
+  if(running && !live){ acc+=Math.min(real,0.1); const dt=1/sim.fps; let n=0;
+    while(acc>=dt && n<8){ simStep(dt); acc-=dt; n++; } }
+  render();
+  requestAnimationFrame(loop);
+}
+onParamChange();
+worldReset();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

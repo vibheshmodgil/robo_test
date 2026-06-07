@@ -14,8 +14,8 @@ class VisionModeManager:
 
     def __init__(self):
         # Change mode at start
-        self.current_state = VisionStates.INVENTORY
-        # self.current_state = VisionStates.GIMBAL
+        # self.current_state = VisionStates.INVENTORY
+        self.current_state = VisionStates.GIMBAL
 
         self.passive_mode = PassiveMode()
         self.follow_mode = FollowMode()

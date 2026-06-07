@@ -7,6 +7,7 @@ from app.trackers.target_tracker import TargetTracker
 from app.controllers.esp32_controller import ESP32Controller
 from app.processors.annotation_drawer import AnnotationDrawer
 from app.controllers.esp32_udp_controller import ESP32ControllerUDP
+from app.controllers.tuning_server import TuningServer
 
 
 class GimbalMode:
@@ -17,6 +18,13 @@ class GimbalMode:
         self.gimbal = GimbalTracker()
         self.esp32 = ESP32ControllerUDP()
         self.drawer = AnnotationDrawer()
+        # --- live tuning bench bridge (daemon thread; doesn't touch the loop) ---
+        self.tuning = TuningServer(
+            tracker=self.gimbal,            # GimbalTracker -> telemetry + live params
+            transport=self.esp32,           # gives sent_pan / sent_tilt on the scope
+            target_tracker=self.target_tracker,  # multi-face params
+            host="0.0.0.0", port=8765,
+        ).start()
 
     def process(self, frame):
 

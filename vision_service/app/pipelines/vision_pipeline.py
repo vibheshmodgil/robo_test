@@ -11,10 +11,10 @@ class VisionPipeline:
 
     def __init__(self):
         # Change Camera
-        # self.camera = WebcamCamera(
-        #     "http://192.168.1.9:81/stream"
-        # )
-        self.camera = WebcamCamera()
+        self.camera = WebcamCamera(
+            "http://192.168.1.9:81/stream"
+        )
+        # self.camera = WebcamCamera()
         self.vision_mode_manager = (
             vision_mode_manager
         )

@@ -29,6 +29,11 @@ class GimbalTracker:
       3. max_step                 deg/frame slew cap
       4. deadband                 dead zone around centre
       5. PID kd                   damping (overshoot / oscillation)
+
+    TUNE: the gain schedule (kp_close/mid/far + ratio splits), predictive lead,
+    and loss-hold are now instance attributes instead of literals, so the
+    tuning bench (TuningServer) can set them live. `last_telemetry` is a
+    per-frame snapshot the server broadcasts to the bench scopes.
     """
 
     def __init__(self):
@@ -54,7 +59,7 @@ class GimbalTracker:
 
         self.lost_frames = 0
         self.prev_face_x = None
-        self.prev_face_y = None 
+        self.prev_face_y = None
 
         self.log_counter = 0
 
@@ -74,6 +79,20 @@ class GimbalTracker:
         self.deadband = 0.04   # normalised (~13 px on a 640-wide frame)
         self.pan_max_step = 1.1
         self.tilt_max_step = 0.7   # deg/frame slew cap -> no jerky re-acquire
+
+        # ---- TUNE: live-tunable knobs (were literals inside track) -------
+        self.home_pan = 90.0       # informational; used by the bench's reset/metrics
+        self.home_tilt = 120.0
+        self.lead = 0.35           # predictive lead gain (was * 0.35)
+        self.kp_close = 1.4        # gain schedule by face size (were 1.4/1.8/2.2)
+        self.kp_mid = 1.8
+        self.kp_far = 2.2
+        self.ratio_hi = 0.20       # face_ratio split points (were 0.20/0.10)
+        self.ratio_lo = 0.10
+        self.lost_hold = 15        # frames to coast before reset (was 15)
+
+        # ---- TUNE: telemetry snapshot for the tuning server --------------
+        self.last_telemetry = None
 
         self.debug = False
 
@@ -105,7 +124,17 @@ class GimbalTracker:
             # tolerate brief detector misses
             self.lost_frames += 1
 
-            if self.lost_frames < 15:
+            # TUNE: snapshot so the bench shows the LOST / coast state
+            self.last_telemetry = {
+                "error_x": 0.0, "error_y": 0.0,
+                "pan": self.pan, "tilt": self.tilt,
+                "pan_out": 0.0, "tilt_out": 0.0,
+                "sat_pan": 0, "sat_tilt": 0,
+                "face_ratio": 0.0, "kp": 0.0,
+                "lost": 1,
+            }
+
+            if self.lost_frames < self.lost_hold:   # TUNE: was < 15
                 return {
                     "pan": self.pan,
                     "tilt": self.tilt
@@ -125,12 +154,12 @@ class GimbalTracker:
         bbox_w = x2 - x1
         face_ratio = bbox_w / width
 
-        if face_ratio > 0.20:
-            kp = 1.4
-        elif face_ratio > 0.10:
-            kp = 1.8
+        if face_ratio > self.ratio_hi:        # TUNE: was 0.20
+            kp = self.kp_close                # TUNE: was 1.4
+        elif face_ratio > self.ratio_lo:      # TUNE: was 0.10
+            kp = self.kp_mid                  # TUNE: was 1.8
         else:
-            kp = 2.2
+            kp = self.kp_far                  # TUNE: was 2.2
 
         self.pan_pid.kp = kp
         self.tilt_pid.kp = kp
@@ -161,8 +190,8 @@ class GimbalTracker:
         vx = face_x - self.prev_face_x
         vy = face_y - self.prev_face_y
 
-        face_x += vx * 0.35
-        face_y += vy * 0.35
+        face_x += vx * self.lead    # TUNE: was * 0.35
+        face_y += vy * self.lead    # TUNE: was * 0.35
 
         self.prev_face_x = face_x
         self.prev_face_y = face_y
@@ -222,6 +251,16 @@ class GimbalTracker:
             self.tilt_max
         )
 
+        # TUNE: per-frame telemetry for the tuning bench
+        self.last_telemetry = {
+            "error_x": error_x, "error_y": error_y,
+            "pan": self.pan, "tilt": self.tilt,
+            "pan_out": pan_output, "tilt_out": tilt_output,
+            "sat_pan": int(sat_pan), "sat_tilt": int(sat_tilt),
+            "face_ratio": face_ratio, "kp": kp,
+            "lost": 0,
+        }
+
         if self.log_counter % 20 == 0:
             print(
                 f"[TRACK] "
@@ -235,7 +274,7 @@ class GimbalTracker:
                 f"d=({d_pan:+.3f},{d_tilt:+.3f}) "
                 f"lost={self.lost_frames}"
             )
-            
+
         self.log_counter += 1
 
         return {
